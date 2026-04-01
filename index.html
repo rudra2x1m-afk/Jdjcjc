@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FileShare Pro - Auto Linker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --accent: #10b981;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            width: 90%;
+            max-width: 450px;
+            text-align: center;
+            border: 1px solid #334155;
+        }
+
+        h1 { color: var(--primary); margin-bottom: 0.5rem; font-size: 24px; }
+        p { color: #94a3b8; font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+        .upload-box {
+            border: 2px dashed #475569;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-bottom: 1.5rem;
+            background: #1e293b;
+        }
+
+        .upload-box:hover { border-color: var(--primary); }
+
+        input[type="file"] { display: none; }
+
+        .input-group {
+            text-align: left;
+            margin-bottom: 1.2rem;
+            position: relative;
+        }
+
+        label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; font-weight: 600; }
+
+        .slug-container {
+            display: flex;
+            gap: 8px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: white;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        .auto-btn {
+            background: #334155;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            padding: 0 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        .auto-btn:hover { background: var(--primary); color: white; }
+
+        .btn-main {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            width: 100%;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        #status { margin-top: 1.2rem; font-size: 0.9rem; }
+        
+        .result-box {
+            margin-top: 1.5rem;
+            padding: 15px;
+            background: #0f172a;
+            border-radius: 8px;
+            display: none;
+            border: 1px solid var(--accent);
+        }
+
+        #shareLink { color: var(--accent); word-break: break-all; font-weight: bold; display: block; margin: 10px 0; text-decoration: none; }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container" id="appUI">
+    <h1><i class="fas fa-bolt"></i> Quick Linker</h1>
+    <p>File upload karein aur instant link payein.</p>
+
+    <div class="upload-box" onclick="document.getElementById('fileInp').click()">
+        <i class="fas fa-file-upload fa-3x" style="color:var(--primary); margin-bottom:10px;"></i>
+        <p id="fileName" style="margin:0;">Select File (Max 5MB)</p>
+    </div>
+    <input type="file" id="fileInp" onchange="updateFileName()">
+
+    <div class="input-group">
+        <label>Custom Link Path</label>
+        <div class="slug-container">
+            <input type="text" id="customSlug" placeholder="e.g. my-file">
+            <button class="auto-btn" onclick="autoGenerateSlug()">AUTO</button>
+        </div>
+    </div>
+
+    <button class="btn-main" id="uploadBtn" onclick="handleUpload()">UPLOAD & GET LINK</button>
+
+    <div id="status"></div>
+
+    <div class="result-box" id="resultBox">
+        <p style="margin:0; font-size: 0.8rem;">Aapka link taiyar hai:</p>
+        <a href="#" id="shareLink" target="_blank"></a>
+        <button onclick="copyLink()" style="background:none; border:1px solid var(--accent); color:var(--accent); padding:5px 10px; border-radius:5px; cursor:pointer; font-size:10px;">COPY LINK</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+    import { getDatabase, ref as dRef, set, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyA-csUDRefYt0fvoSjAyeg66FjWFM902zM",
+        authDomain: "watch-ads-earn-money-687ce.firebaseapp.com",
+        databaseURL: "https://watch-ads-earn-money-687ce-default-rtdb.firebaseio.com",
+        projectId: "watch-ads-earn-money-687ce",
+        storageBucket: "watch-ads-earn-money-687ce.firebasestorage.app",
+        messagingSenderId: "200199443778",
+        appId: "1:200199443778:web:d81ae486b61286ebc6a4db",
+        measurementId: "G-VM9QXDB7W1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const storage = getStorage(app);
+    const db = getDatabase(app);
+
+    // Auto-generate slug function
+    window.autoGenerateSlug = () => {
+        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        let randomSlug = 'file-';
+        for (let i = 0; i < 6; i++) {
+            randomSlug += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        document.getElementById('customSlug').value = randomSlug;
+    };
+
+    window.updateFileName = () => {
+        const file = document.getElementById('fileInp').files[0];
+        if(file) document.getElementById('fileName').innerText = file.name;
+    };
+
+    window.copyLink = () => {
+        const link = document.getElementById('shareLink').innerText;
+        navigator.clipboard.writeText(link);
+        alert("Copied! ✅");
+    };
+
+    window.handleUpload = async () => {
+        const fileInp = document.getElementById('fileInp');
+        const slugInp = document.getElementById('customSlug');
+        const status = document.getElementById('status');
+        const btn = document.getElementById('uploadBtn');
+        
+        if(!fileInp.files[0]) return alert("File chunein!");
+        
+        // Auto generate if empty
+        if(!slugInp.value.trim()) window.autoGenerateSlug();
+        
+        const slug = slugInp.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+        const file = fileInp.files[0];
+
+        if(file.size > 5 * 1024 * 1024) return alert("File size 5MB se zyada hai!");
+
+        btn.disabled = true;
+        status.innerHTML = '<div class="loader"></div> Uploading...';
+
+        try {
+            const check = await get(dRef(db, 'links/' + slug));
+            if(check.exists()) throw new Error("Ye slug already liya gaya hai!");
+
+            const storageRef = sRef(storage, 'uploads/' + Date.now() + "_" + file.name);
+            const uploadTask = await uploadBytes(storageRef, file);
+            const url = await getDownloadURL(uploadTask.ref);
+
+            await set(dRef(db, 'links/' + slug), { targetUrl: url, createdAt: Date.now() });
+
+            status.innerHTML = "<b style='color:#10b981'>Done!</b>";
+            const finalLink = window.location.href.split('?')[0] + "?f=" + slug;
+            document.getElementById('resultBox').style.display = 'block';
+            document.getElementById('shareLink').innerText = finalLink;
+            document.getElementById('shareLink').href = finalLink;
+
+        } catch (e) {
+            status.innerHTML = `<span style="color:#ef4444">${e.message}</span>`;
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    // Redirection Logic
+    const params = new URLSearchParams(window.location.search);
+    const f = params.get('f');
+    if(f) {
+        document.body.innerHTML = "<h2 style='color:white; text-align:center; margin-top:20%;'>Redirecting to file...</h2>";
+        get(dRef(db, 'links/' + f)).then(s => {
+            if(s.exists()) window.location.href = s.val().targetUrl;
+            else document.body.innerHTML = "<h2 style='color:red; text-align:center;'>Link Expired or Invalid!</h2>";
+        });
+    }
+</script>
+</body>
+</html>
